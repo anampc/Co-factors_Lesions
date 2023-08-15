@@ -1,0 +1,308 @@
+---
+title: "Ofav  environmental Co-factors and SCTLD transmission"
+author: "Ana Palacio-Castro"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    fig_height: 6
+    fig_width: 6
+    df_print: paged
+    toc: yes
+    toc_float: true
+#bibliography: packages.bib
+#nocite: '@*'
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE) 
+                      #fig.width=4, fig.height=3 )
+```
+
+# General project set-up 
+
+```{r libraries, results="hide"}
+
+# Load all libraries and sources required to run the script
+    library(tidyverse)
+    library(ggthemes)
+    library(survival)
+    library(survminer)
+    library(gtsummary)
+    #library(rms)
+
+# Graphs
+# Plots
+MyTheme<-theme_bw() +  
+theme(legend.position="top",
+          plot.background=element_blank(),
+          #axis.text.x = element_text(angle = 90, vjust = 0.5),
+          panel.grid.major.y = element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          legend.box.background = element_rect(),
+          legend.title = element_blank(),
+          panel.background =element_rect(fill = NA, 
+                                         color = "black"))#+
+  #guides(fill=guide_legend(nrow=2,byrow=TRUE), shape=guide_legend(nrow=3,byrow=TRUE))
+
+Fill.colour<-c ("#2b83ba", "#003399", "#d7191c", "#660000")
+
+Treat_colour<-scale_colour_manual(values =
+                           c("#2b83ba", "#003399",
+                             "#d7191c", "#660000"))
+    
+```
+
+Try survival package
+
+```{r}
+# Data
+    Survival.data<-read.csv("SCTLD_mortality.csv", header = TRUE)
+    summary(Survival.data) 
+    
+    Survival.data$Start_Of_Lesion<-as.Date(Survival.data$Start_Of_Lesion)
+    Survival.data$Day_lesion<-as.numeric(difftime(Survival.data$Start_Of_Lesion, 
+                                  as.Date("2023-05-01"), units="days"))
+    
+    Survival.data$Date.of.Total.Annihilation<-as.Date(Survival.data$Date.of.Total.Annihilation)
+    Survival.data$Day_death<-as.numeric(difftime(Survival.data$Date.of.Total.Annihilation, 
+                                  as.Date("2023-05-01"), units="days"))
+  
+    
+    Survival.data$Colony<-as.factor(Survival.data$Genotype)
+    Survival.data$Nutrients<-as.factor(Survival.data$Nutrients)
+    Survival.data$Disease<-as.factor(Survival.data$Disease)
+    Survival.data$Treatment<-as.factor(Survival.data$Treatment)
+    
+    Survival.data<-Survival.data[Survival.data$Disease=="SCTLD", ]
+    Survival.data$Treatment<-factor(paste(Survival.data$Nutrients, 
+                                    Survival.data$Temp, sep = "_"))
+    Survival.data$Treatment<-factor(Survival.data$Treatment,
+                              levels = c("LN_28", "HN_28", "LN_31", "HN_31"))
+
+    #Survival.data$Treatment<-factor(Survival.data$Treatment, 
+    #                               levels=c("N", "N_P","Ambient"))
+    summary(Survival.data)
+    droplevels(Survival.data)
+```
+
+# 1.Model for lesion
+
+```{r}
+## Add survival object (Fit survival data using the Kaplan-Meier method)
+  surv_lesion <- Surv(time = Survival.data$Day_lesion, 
+                      event = Survival.data$Fu.stat_les)
+  surv_lesion 
+
+```
+
+
+## 1.1 Treatment only
+
+* Model
+
+```{r}
+# Only treatment model
+
+    # Kaplan-Meier estimator. The "log-log" confidence interval is preferred.
+    fit1 <- survfit(surv_lesion ~ Treatment, data = Survival.data)
+    summary(fit1)
+    summary(fit1)$table
+    surv_pvalue(fit1)
+     
+    res.sum <- surv_summary(fit1,  data = Survival.data)
+    attr(res.sum, "table")
+    
+    sd1<-survdiff(surv_lesion~Treatment, data = Survival.data)
+    sd1
+    1 - pchisq(sd1$chisq, length(sd1$n) - 1)# pvalue
+     
+    results1<-summary(fit1, times = c(46, 48, 50, 52, 54))
+    save.df <- as.data.frame(results1[
+      c("strata", "time", "n.risk", "n.event", "surv", "std.err")])
+    write.csv(save.df, file = "survival_Treatments.csv")
+```
+
+* Plot survival model
+
+```{r}
+# Plot the survival model
+    OF_Treatment_Only<-ggsurvplot(fit1, data = Survival.data, pval = TRUE, 
+           #conf.int = T, 
+           palette=Fill.colour, fun = "pct",
+           break.time.by=2, xlim=c(40,56), 
+           risk.table=T, risk.table.y.text = FALSE,
+           risk.table.title="Number of fragments at risk") #+ 
+           #ggtitle("Treatment")
+    OF_Treatment_Only
+    
+    #ggsave("Outputs/OF_Treatment_Only.svg", OF_Treatment_Only, width=5, height=4,dpi = 300)
+    
+# Other plots    
+    ggsurvplot(fit1, data = Survival.data, fun = "event", palette=Fill.colour, xlim=c(40,56))
+    ggsurvplot(fit1, data = Survival.data, fun = "cumhaz", palette=Fill.colour, xlim=c(40,56))
+    ggsurvplot(fit1, data = Survival.data, fun = "pct", palette=Fill.colour, xlim=c(40,56))
+```
+
+* Cox hazards
+
+```{r}
+    coxfit <- coxph(surv_lesion ~ Treatment, data = Survival.data)
+    #coxfit <- coxph(surv_lesion ~ Treatment, data = Survival.data, ties = 'exact')
+    #coxfit <- coxph(surv_lesion ~ Treatment, data = Survival.data, singular.ok = TRUE)
+    summary(coxfit)
+    ggadjustedcurves(coxfit, data=Survival.data, 
+                     variable = "Treatment", palette=Fill.colour,
+                     break.time.by=7)
+```
+
+```{r}
+# Test for the proportional-hazards (PH) assumption
+    test.ph <- cox.zph(coxfit)
+    test.ph
+    # the test is not statistically significant for each of the covariates, or the global test.
+    # Therefore, we can assume the proportional hazards.
+    
+    ggcoxzph(test.ph)
+    # Systematic departures from a horizontal line are indicative of non-proportional hazard
+    
+# Testing influential observations
+    
+    ggcoxdiagnostics(coxfit, type = "dfbeta",
+                 linear.predictions = FALSE, ggtheme = theme_bw())
+      #Positive values correspond to individuals that “died too soon” compared to expected survival times.
+      #Negative values correspond to individual that “lived too long”.
+      #Very large or small values are outliers, which are poorly predicted by the model.
+    
+    ggcoxdiagnostics(coxfit, type = "deviance",
+                 linear.predictions = FALSE, ggtheme = theme_bw())
+    
+ # Testing non linearity (for numeric variales)
+    #$ggcoxfunctional(Surv(time = Survival.data$Fu.time_texp,
+    #                     event = Survival.data$Fu.stat_exp) ~ Day + log(Day) + sqrt(Day),
+    #                     data = Survival.data)
+```
+
+* Plot the hazard ratios 
+```{r}
+HazardRatio<-ggforest(coxfit, data = Survival.data)
+HazardRatio
+
+#ggsave("Outputs/Fig_2b_HazardRatio.svg", HazardRatio3, width=5, height=4,dpi = 300)
+```
+
+* “z” gives the Wald statistic value. It corresponds to the ratio of each regression coefficient to its standard error (z = coef/se(coef)). The wald statistic evaluates, whether the beta (β) coefficient of a given variable is statistically significantly different from 0.
+
+* The regression coefficients is the the sign of the regression coefficients (coef). A positive sign means that the hazard (risk of death) is higher, and thus the prognosis worse, for subjects with higher values of that variable. The R summary for the Cox model gives the hazard ratio (HR) for the second group relative to the first group.
+
+* Hazard ratios. The exponentiated coefficients (exp(coef)), also known as hazard ratios, give the effect size of covariates. Confidence intervals of the hazard ratios. The summary output also gives upper and lower 95% confidence intervals for the hazard ratio (exp(coef))
+
+* Global statistical significance of the model. p-values for three alternative tests for overall significance of the model: The likelihood-ratio test, Wald test, and score logrank statistics. These three methods are asymptotically equivalent. For large enough N, they will give similar results. For small N, they may differ somewhat. The Likelihood ratio test has better behavior for small sample sizes, so it is generally preferred.
+
+## 1.2 Colony and treatment
+
+* Model
+
+```{r}
+# Treatment and colony model 2 
+    # Kaplan-Meier estimator. The "log-log" confidence interval is preferred.
+    fit2 <- survfit(surv_lesion ~ Colony + Treatment, data = Survival.data)
+    summary(fit2)
+    summary(fit2)$table
+    surv_pvalue(fit2)
+     
+    res.sum <- surv_summary(fit2,  data = Survival.data)
+    attr(res.sum, "table")
+    
+    sd2<-survdiff(surv_lesion~ Colony + Treatment, data = Survival.data)
+    sd2
+    1 - pchisq(sd2$chisq, length(sd2$n) - 1)# pvalue
+     
+    results2<-summary(fit2, times = c(46, 48, 50, 52, 54))
+    save.df <- as.data.frame(results1[
+      c("strata", "time", "n.risk", "n.event", "surv", "std.err")])
+    write.csv(save.df, file = "survival_Tre_Col.csv")
+```
+
+* Plot survival models
+
+```{r}
+    # Plot the survival model
+    
+    Of_facet_T<-ggsurvplot_facet(fit2, data = Survival.data, facet.by="Colony", 
+                  #risk.table=T, tables.height=0.5, 
+                  #conf.int = T,
+                  nrow = 3, alpha=1, 
+                  palette=Fill.colour, linetype=1)+
+      geom_segment(aes(x = 0, y = 0, xend = 55, yend = 0),
+                   linetype="dashed", colour = "gray35") #+
+      # geom_segment(aes(x = 79, xend = 91, y = 0, yend = 0.5), 
+      #              colour = "gray35", linetype="dotted")+
+      # geom_segment(aes(x = 91, xend = 113, y = 0.5, yend = 0.5), 
+      #              colour = "gray35", linetype="dotted")
+    Of_facet_T
+    #ggsave("Outputs/Of_facet_Tre_Col.svg", Of_facet_T, width=4, height=7,dpi = 300)
+    
+    # Other plots    
+    ggsurvplot(fit2, data = Survival.data, fun = "event", palette=Fill.colour, facet.by="Colony")
+    ggsurvplot(fit2, data = Survival.data, fun = "cumhaz", palette=Fill.colour, facet.by="Colony")
+    ggsurvplot(fit2, data = Survival.data, fun = "pct", palette=Fill.colour, facet.by="Colony")
+      
+```
+
+* Cox hazards 
+
+```{r}
+  coxfit2 <- coxph(surv_lesion ~  Treatment + Colony, data = Survival.data)
+  #coxfit2 <- coxph(surv_lesion ~ Colony + Treatment + strata(Treatment), data = Survival.data)
+  summary(coxfit2)
+  coxfit2
+    
+ggadjustedcurves(coxfit2, data=Survival.data, variable = "Treatment", palette=Fill.colour, 
+                 # method = "average",
+                 break.time.by=7)
+ggadjustedcurves(coxfit2, data=Survival.data, variable = "Colony",
+                     break.time.by=7)
+
+```
+
+
+```{r}
+
+# Test for the proportional-hazards (PH) assumption
+    test.ph <- cox.zph(coxfit2)
+    test.ph
+    # the test is not statistically significant for each of the covariates, or the global test.
+    # Therefore, we can assume the proportional hazards.
+    
+    ggcoxzph(test.ph)
+    # Systematic departures from a horizontal line are indicative of non-proportional hazard
+    
+# Testing influential observations
+    
+    ggcoxdiagnostics(coxfit2, type = "dfbeta",
+                 linear.predictions = FALSE, ggtheme = theme_bw())
+      #Positive values correspond to individuals that “died too soon” compared to expected survival times.
+      #Negative values correspond to individual that “lived too long”.
+      #Very large or small values are outliers, which are poorly predicted by the model.
+    
+    ggcoxdiagnostics(coxfit2, type = "deviance",
+                 linear.predictions = FALSE, ggtheme = theme_bw())
+    
+ # Testing non linearity (for numeric variales)
+    #$ggcoxfunctional(Surv(time = Survival.data$Fu.time_texp,
+    #                     event = Survival.data$Fu.stat_exp) ~ Day + log(Day) + sqrt(Day),
+     #               data = Survival.data)
+
+```
+
+```{r}
+HazardRatio2<-ggforest(coxfit2, data = Survival.data)
+HazardRatio2
+
+#ggsave("Outputs/Fig_2b_HazardRatio.svg", HazardRatio3, width=5, height=4,dpi = 300)
+```
