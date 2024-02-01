@@ -126,7 +126,7 @@ Try survival package
     results1<-summary(fit1, times = c(46, 48, 50, 52, 54))
     save.df <- as.data.frame(results1[
       c("strata", "time", "n.risk", "n.event", "surv", "std.err")])
-    write.csv(save.df, file = "survival_Treatments.csv")
+#write.csv(save.df, file = "survival_Treatments.csv")
 ```
 
 * Plot survival model
@@ -142,7 +142,7 @@ Try survival package
            #ggtitle("Treatment")
     OF_Treatment_Only
     
-    #ggsave("Outputs/OF_Treatment_Only.svg", OF_Treatment_Only, width=5, height=4,dpi = 300)
+#ggsave("Outputs/OF_Treatment_Only.svg", OF_Treatment_Only, width=5, height=4,dpi = 300)
     
 # Other plots    
     ggsurvplot(fit1, data = Survival.data, fun = "event", palette=Fill.colour, xlim=c(40,56))
@@ -344,7 +344,7 @@ HazardRatio2
     results1<-summary(fit3, times = c(46, 48, 50, 52, 54))
     save.df <- as.data.frame(results1[
       c("strata", "time", "n.risk", "n.event", "surv", "std.err")])
-    write.csv(save.df, file = "survival_Treatments.csv")
+    write.csv(save.df, file = "Outputs/survival_Treatments.csv")
 ```
 
 * Plot survival model
@@ -520,7 +520,7 @@ HazardRatio4
 #ggsave("Outputs/Fig_2b_HazardRatio.svg", HazardRatio3, width=5, height=4,dpi = 300)
 ```
 
-# 3.Model for lesion Nutrients and Temp individually
+# 3.Model for individual factors
 
 ```{r}
 ## Add survival object (Fit survival data using the Kaplan-Meier method)
@@ -531,7 +531,7 @@ HazardRatio4
 ```
 
 
-## 3.1 Temperature
+## 3.1 Temperature and colony (nutrients do not have an effect)
 
 * Model
 
@@ -541,23 +541,33 @@ HazardRatio4
     # Kaplan-Meier estimator. The "log-log" confidence interval is preferred.
     # fit5 <- survfit(surv_lesion ~ Temp + Nutrients,
     #                 data = Survival.data)
-    fit5 <- survfit(surv_lesion ~ Temp,
+    fit5_null <- survfit(surv_lesion ~ 1,
                     data = Survival.data)
-    summary(fit5)
-    summary(fit5)$table
-    surv_pvalue(fit5)
+    
+    fit5a <- survfit(surv_lesion ~ Temp,
+                    data = Survival.data)
+        
+    fit5b <- survfit(surv_lesion ~ Nutrients,
+                    data = Survival.data)
+    
+    fit5c <- survfit(surv_lesion ~ Colony,
+                    data = Survival.data)
      
-    res.sum <- surv_summary(fit5,  data = Survival.data)
+    fit.list <- list(Temperature = fit5a, Nutrients = fit5b, Colony = fit5c)
+    surv_pvalue(fit.list, combine = T)
+  
+     
+    res.sum <- surv_summary(fit5a,  data = Survival.data)
     attr(res.sum, "table")
     
-    sd5<-survdiff(surv_lesion~Temp+Nutrients, data = Survival.data)
+    sd5<-survdiff(surv_lesion~Temp+Colony, data = Survival.data)
     sd5
     1 - pchisq(sd5$chisq, length(sd5$n) - 1)# pvalue
      
-    results5<-summary(fit5, times = c(46, 48, 50, 52, 54))
+    results5<-summary(fit5a, times = c(46, 48, 50, 52, 54))
     save.df <- as.data.frame(results5[
       c("strata", "time", "n.risk", "n.event", "surv", "std.err")])
-    write.csv(save.df, file = "survival_Temp.csv")
+    write.csv(save.df, file = "Outputs/survival_Temp.csv")
 ```
 
 * Plot survival model
@@ -565,18 +575,20 @@ HazardRatio4
 ```{r}
 Fill.2colour<-c ("#2b83ba", "#d7191c")
 # Plot the survival model
-    OF_Treatment_Only<-ggsurvplot(fit5, data = Survival.data,
+    OF_Temp_Only<-ggsurvplot(fit5a, data = Survival.data,
            pval = TRUE, 
            conf.int = T, 
            palette= Fill.2colour, 
-           fun = "pct",
+           #fun = "event",
            break.time.by=3, xlim=c(32,56), 
            risk.table=T, risk.table.y.text = FALSE,
            risk.table.title="Number of fragments at risk") #+ 
            #ggtitle("Treatment")
-    OF_Treatment_Only
+    OF_Temp_Only
     
-#ggsave("Outputs/OF_Treatment_Only.svg", OF_Treatment_Only, width=5, height=4,dpi = 300)
+#ggsave("Outputs/Of_Temp_plot.svg", OF_Temp_Only$plot, width=5, height=4,dpi = 300)
+
+#ggsave("Outputs/Of_Temp_table.svg", OF_Temp_Only$table, width=5, height=2,dpi = 300)
     
 # Other plots    
     ggsurvplot(fit5, data = Survival.data, fun = "event", palette=Fill.2colour, xlim=c(40,56))
@@ -587,11 +599,11 @@ Fill.2colour<-c ("#2b83ba", "#d7191c")
 * Cox hazards
 
 ```{r}
-    coxfit5 <- coxph(surv_lesion ~ Nutrients+Temp, data = Survival.data)
+    coxfit5 <- coxph(surv_lesion ~ Nutrients*Temp, data = Survival.data)
     summary(coxfit5)
     ggadjustedcurves(coxfit5, data=Survival.data, 
                      variable = "Temp", palette=Fill.2colour,
-                     break.time.by=7)
+                      break.time.by=3, xlim=c(38,54))
 ```
 
 ```{r}
@@ -637,10 +649,26 @@ HazardRatio5
 ```{r}
 # Treatment and colony model 2 
     # Kaplan-Meier estimator. The "log-log" confidence interval is preferred.
-    fit6 <- survfit(surv_lesion ~ Colony + Temp, data = Survival.data)
+    fit6 <- survfit(surv_lesion ~ Temp + Colony + Nutrients, data = Survival.data)
     summary(fit6)
     summary(fit6)$table
     surv_pvalue(fit6)
+    
+    fit6a <- survfit(surv_lesion ~ Temp,
+                    data = Survival.data)
+        surv_pvalue(fit6a)
+        
+    fit6b <- survfit(surv_lesion ~ Nutrients,
+                    data = Survival.data)
+       surv_pvalue(fit6b)
+    
+    fit6c <- survfit(surv_lesion ~ Colony,
+                    data = Survival.data)
+        surv_pvalue(fit6c)
+     
+    fit.list <- list(Temperature = fit6a, Nutrients = fit6b, Colony = fit6c)
+    surv_pvalue(fit.list, combine = T)
+  
      
     res.sum <- surv_summary(fit6,  data = Survival.data)
     attr(res.sum, "table")
@@ -652,7 +680,7 @@ HazardRatio5
     results6<-summary(fit6, times = c(46, 48, 50, 52, 54))
     save.df <- as.data.frame(results6[
       c("strata", "time", "n.risk", "n.event", "surv", "std.err")])
-    write.csv(save.df, file = "Lesion_TE_NUT_Col.csv")
+    write.csv(save.df, file = "Outputs/Lesion_TE_NUT_Col.csv")
 ```
 
 * Plot survival models
@@ -664,7 +692,10 @@ HazardRatio5
                   #risk.table=T, tables.height=0.5, 
                   #conf.int = T,
                   nrow = 3, alpha=1, 
-                  palette=Fill.2colour, linetype=1)+
+                  break.time.by=3, xlim=c(42,55),
+                  palette=Fill.colour, 
+                  linetype=1)+
+       
       geom_segment(aes(x = 0, y = 0, xend = 55, yend = 0),
                    linetype="dashed", colour = "gray35") #+
       # geom_segment(aes(x = 79, xend = 91, y = 0, yend = 0.5), 
@@ -672,7 +703,7 @@ HazardRatio5
       # geom_segment(aes(x = 91, xend = 113, y = 0.5, yend = 0.5), 
       #              colour = "gray35", linetype="dotted")
     Of_facet_T
-    #ggsave("Outputs/Of_facet_Tre_Col.svg", Of_facet_T, width=4, height=7,dpi = 300)
+    #ggsave("Outputs/Of_facet_Tre_Col.svg", Of_facet_T, width=3, height=4,dpi = 300)
     
     # Other plots    
     ggsurvplot(fit6, data = Survival.data, fun = "event", palette=Fill.colour, facet.by="Colony")
@@ -684,7 +715,7 @@ HazardRatio5
 * Cox hazards 
 
 ```{r}
-  coxfit6 <- coxph(surv_lesion ~  Temp+Nutrients + Colony, data = Survival.data)
+  coxfit6 <- coxph(surv_lesion ~  Temp+Colony+Nutrients, data = Survival.data)
  
   summary(coxfit6)
   coxfit6
